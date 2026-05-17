@@ -282,6 +282,112 @@ function showToast(msg, duration = 3000) {
   el.classList.add('visible');
   setTimeout(() => el.classList.remove('visible'), duration);
 }
+
+// ── AUDIO STATE ──
+let mediaRecorder = null;
+let audioChunks = [];
+let audioContext = null;
+let analyser = null;
+let silenceStart = null;
+let silenceDetectionId = null;
+let stream = null;
+
+const SILENCE_THRESHOLD = 0.015;
+const SILENCE_DURATION_MS = 1500;
+
+// ── START RECORDING ──
+async function startRecording() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    showToast('Microphone access denied');
+    throw err;
+  }
+
+  audioContext = new AudioContext();
+  const source = audioContext.createMediaStreamSource(stream);
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 256;
+  source.connect(analyser);
+
+  mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) audioChunks.push(e.data);
+  };
+  mediaRecorder.start(100);
+
+  silenceDetectionId = requestAnimationFrame(detectSilence);
+}
+
+// ── SILENCE DETECTION LOOP ──
+function detectSilence() {
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(data);
+
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = (data[i] - 128) / 128;
+    sum += v * v;
+  }
+  const rms = Math.sqrt(sum / data.length);
+  const now = Date.now();
+
+  if (rms < SILENCE_THRESHOLD) {
+    if (!silenceStart) {
+      silenceStart = now;
+    } else if (now - silenceStart >= SILENCE_DURATION_MS && audioChunks.length > 0) {
+      processChunk();
+      silenceStart = null;
+    }
+  } else {
+    silenceStart = null;
+  }
+
+  silenceDetectionId = requestAnimationFrame(detectSilence);
+}
+
+// ── PROCESS AUDIO CHUNK ──
+async function processChunk() {
+  if (audioChunks.length === 0) return;
+  const blob = new Blob(audioChunks, { type: 'audio/webm' });
+  audioChunks = [];
+
+  const formData = new FormData();
+  formData.append('audio', blob, 'audio.webm');
+
+  let transcript;
+  try {
+    const res = await fetch('/transcribe', { method: 'POST', body: formData });
+    const data = await res.json();
+    transcript = data.transcript;
+  } catch (err) {
+    showToast('Transcription failed — continuing');
+    return;
+  }
+
+  // Dev mode: show even empty transcript so user can correct; prod: skip empty
+  if (!transcript && !DEBUG_MODE) return;
+
+  if (DEBUG_MODE) {
+    showHITL(transcript || '');
+  } else {
+    await sendToClaudeWrapper(transcript);
+  }
+}
+
+// ── STOP RECORDING ──
+function stopRecording() {
+  if (silenceDetectionId) cancelAnimationFrame(silenceDetectionId);
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (audioContext) audioContext.close();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  mediaRecorder = null;
+  audioContext = null;
+  analyser = null;
+  stream = null;
+}
 </script>
 </body>
 </html>
