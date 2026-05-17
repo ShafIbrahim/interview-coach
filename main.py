@@ -18,8 +18,14 @@ INTERVIEWS_DIR = Path(__file__).parent / "interviews"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise RuntimeError("ANTHROPIC_API_KEY is not set in .env")
     INTERVIEWS_DIR.mkdir(exist_ok=True)
     load_model(os.getenv("WHISPER_MODEL", "base"))
+    print(f"[startup] Whisper model: {os.getenv('WHISPER_MODEL', 'base')}")
+    print(f"[startup] Debug mode: {os.getenv('DEBUG', 'false')}")
+    print(f"[startup] Max hints default: {os.getenv('MAX_HINTS', '3')}")
+    print("[startup] Ready at http://localhost:8000")
     yield
 
 app = FastAPI(lifespan=lifespan)
