@@ -1,6 +1,8 @@
 import os
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
+from datetime import datetime
 from fastapi import FastAPI, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -50,3 +52,35 @@ async def chat_endpoint(req: ChatRequest):
         hints_remaining=req.hints_remaining,
     )
     return claude_chat(req.messages, system_prompt)
+
+class TranscriptEntry(BaseModel):
+    role: str
+    content: str
+    ts: str
+
+class SessionEndRequest(BaseModel):
+    mode: str
+    problem: str
+    duration_seconds: int
+    hints_used: int
+    max_hints: int
+    transcript: list[TranscriptEntry]
+
+@app.post("/session/end")
+async def session_end(req: SessionEndRequest):
+    timestamp = datetime.now()
+    filename = INTERVIEWS_DIR / f"{timestamp.strftime('%Y-%m-%d_%H-%M-%S')}_{req.mode}.json"
+    data = {
+        "timestamp": timestamp.isoformat(),
+        "mode": req.mode,
+        "problem": req.problem,
+        "duration_seconds": req.duration_seconds,
+        "hints_used": req.hints_used,
+        "max_hints": req.max_hints,
+        "transcript": [e.model_dump() for e in req.transcript],
+    }
+    try:
+        filename.write_text(json.dumps(data, indent=2))
+    except Exception as e:
+        print(f"[session/end] Failed to save transcript: {e}")
+    return {"saved": str(filename)}
