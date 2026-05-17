@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -28,7 +28,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 async def index():
-    return FileResponse("static/index.html")
+    html = (Path(__file__).parent / "static" / "index.html").read_text()
+    html = html.replace("__DEBUG__", os.getenv("DEBUG", "false").lower())
+    html = html.replace("__MAX_HINTS__", os.getenv("MAX_HINTS", "3"))
+    return HTMLResponse(html)
 
 @app.post("/transcribe")
 async def transcribe_audio(audio: UploadFile = File(...)):
