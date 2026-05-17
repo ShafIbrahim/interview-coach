@@ -504,6 +504,85 @@ document.getElementById('hitl-text').addEventListener('keydown', (e) => {
     pendingHITLResolve = null;
   }
 });
+
+// ── START INTERVIEW ──
+document.getElementById('start-btn').addEventListener('click', async () => {
+  const problem = document.getElementById('problem-input').value.trim();
+  if (!problem) {
+    showToast('Please paste a problem statement first');
+    return;
+  }
+
+  sessionActive = true;
+  hintsUsed = 0;
+  maxHints = parseInt(document.getElementById('max-hints-select').value);
+  conversationHistory = [];
+  transcriptLog = [];
+  sessionStartTime = Date.now();
+  document.getElementById('transcript').innerHTML = '';
+  updateHintCounter();
+
+  document.getElementById('start-btn').disabled = true;
+  document.getElementById('end-btn').disabled = false;
+  document.getElementById('problem-input').disabled = true;
+  document.querySelectorAll('.mode-btn').forEach(b => b.disabled = true);
+  document.getElementById('max-hints-select').disabled = true;
+
+  const rec = document.getElementById('rec-indicator');
+  rec.classList.add('active');
+  document.getElementById('rec-label').textContent = 'Recording';
+
+  try {
+    await startRecording();
+  } catch {
+    resetSessionUI();
+    return;
+  }
+
+  const openingMsg = currentMode === 'algo'
+    ? `I'll be your interviewer today. Here's your problem:\n\n${problem}\n\nBefore writing any code — what clarifying questions do you have?`
+    : `I'll be your interviewer today. Here's your system design problem:\n\n${problem}\n\nLet's start with the requirements. What clarifying questions do you have?`;
+
+  appendMessage('assistant', openingMsg);
+  conversationHistory.push({ role: 'assistant', content: openingMsg });
+});
+
+// ── END INTERVIEW ──
+document.getElementById('end-btn').addEventListener('click', async () => {
+  stopRecording();
+  sessionActive = false;
+
+  const durationSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+
+  fetch('/session/end', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mode: currentMode,
+      problem: document.getElementById('problem-input').value,
+      duration_seconds: durationSeconds,
+      hints_used: hintsUsed,
+      max_hints: maxHints,
+      transcript: transcriptLog,
+    }),
+  }).catch(err => console.error('Failed to save session:', err));
+
+  showToast(`Interview ended. Duration: ${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s. Transcript saved.`, 5000);
+  resetSessionUI();
+});
+
+// ── RESET UI ──
+function resetSessionUI() {
+  sessionActive = false;
+  document.getElementById('start-btn').disabled = false;
+  document.getElementById('end-btn').disabled = true;
+  document.getElementById('problem-input').disabled = false;
+  document.querySelectorAll('.mode-btn').forEach(b => b.disabled = false);
+  document.getElementById('max-hints-select').disabled = false;
+  document.getElementById('rec-indicator').classList.remove('active');
+  document.getElementById('rec-label').textContent = 'Idle';
+  document.getElementById('hitl-bar').classList.remove('visible');
+}
 </script>
 </body>
 </html>
