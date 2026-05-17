@@ -291,6 +291,7 @@ let analyser = null;
 let silenceStart = null;
 let silenceDetectionId = null;
 let stream = null;
+let isProcessing = false;
 
 const SILENCE_THRESHOLD = 0.015;
 const SILENCE_DURATION_MS = 1500;
@@ -310,18 +311,38 @@ async function startRecording() {
   analyser.fftSize = 256;
   source.connect(analyser);
 
+  createAndStartRecorder();
+  silenceDetectionId = requestAnimationFrame(detectSilence);
+}
+
+// Each call produces a fresh EBML header as the first chunk, so every blob is
+// a self-contained WebM file that ffmpeg/Whisper can parse independently.
+function createAndStartRecorder() {
   mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
   mediaRecorder.ondataavailable = (e) => {
     if (e.data.size > 0) audioChunks.push(e.data);
   };
+  mediaRecorder.onstop = async () => {
+    if (audioChunks.length === 0) { isProcessing = false; return; }
+    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+    audioChunks = [];
+    // Restart before the async send so we don't miss speech during processing.
+    if (stream && stream.active) createAndStartRecorder();
+    isProcessing = false;
+    await processChunk(blob);
+  };
   mediaRecorder.start(100);
-
-  silenceDetectionId = requestAnimationFrame(detectSilence);
 }
 
 // ── SILENCE DETECTION LOOP ──
 function detectSilence() {
-  if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+  if (!analyser) return; // interview ended
+
+  // Keep the loop alive while the recorder briefly restarts between utterances.
+  if (!mediaRecorder || mediaRecorder.state !== 'recording') {
+    silenceDetectionId = requestAnimationFrame(detectSilence);
+    return;
+  }
 
   const data = new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteTimeDomainData(data);
@@ -337,9 +358,10 @@ function detectSilence() {
   if (rms < SILENCE_THRESHOLD) {
     if (!silenceStart) {
       silenceStart = now;
-    } else if (now - silenceStart >= SILENCE_DURATION_MS && audioChunks.length > 0) {
-      processChunk();
+    } else if (now - silenceStart >= SILENCE_DURATION_MS && audioChunks.length > 0 && !isProcessing) {
+      isProcessing = true;
       silenceStart = null;
+      mediaRecorder.stop(); // onstop handles blob assembly, restart, and send
     }
   } else {
     silenceStart = null;
@@ -349,11 +371,7 @@ function detectSilence() {
 }
 
 // ── PROCESS AUDIO CHUNK ──
-async function processChunk() {
-  if (audioChunks.length === 0) return;
-  const blob = new Blob(audioChunks, { type: 'audio/webm' });
-  audioChunks = [];
-
+async function processChunk(blob) {
   const formData = new FormData();
   formData.append('audio', blob, 'audio.webm');
 
