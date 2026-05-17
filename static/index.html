@@ -2,9 +2,202 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Interview Coach</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    /* TOP BAR */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      flex-shrink: 0;
+    }
+    .mode-toggle { display: flex; background: #0f1117; border-radius: 6px; padding: 3px; gap: 3px; }
+    .mode-btn {
+      padding: 5px 14px; border-radius: 4px; border: none;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      background: transparent; color: #94a3b8; transition: all 0.15s;
+    }
+    .mode-btn.active { background: #6366f1; color: #fff; }
+    .problem-input {
+      flex: 1; background: #0f1117; border: 1px solid #2d3148;
+      border-radius: 6px; padding: 6px 12px; color: #e2e8f0;
+      font-size: 13px; outline: none;
+    }
+    .problem-input:focus { border-color: #6366f1; }
+    .problem-input::placeholder { color: #4a5568; }
+    .hint-config { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; white-space: nowrap; }
+    .hint-config select {
+      background: #0f1117; border: 1px solid #2d3148;
+      color: #e2e8f0; border-radius: 4px; padding: 4px 6px; font-size: 12px;
+    }
+    .debug-badge {
+      font-size: 10px; background: #f59e0b22; color: #f59e0b;
+      border: 1px solid #f59e0b44; border-radius: 4px; padding: 3px 7px;
+      font-weight: 600; display: none;
+    }
+    .debug-badge.visible { display: block; }
+    .start-btn {
+      padding: 7px 18px; background: #22c55e; color: #fff;
+      border: none; border-radius: 6px; font-size: 13px;
+      font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .start-btn:disabled { background: #374151; color: #6b7280; cursor: not-allowed; }
+    /* PANELS */
+    .panels { display: flex; flex: 1; overflow: hidden; }
+    .left-panel { width: 42%; display: flex; flex-direction: column; border-right: 1px solid #2d3148; }
+    .right-panel { flex: 1; display: flex; flex-direction: column; }
+    .panel-header {
+      padding: 10px 16px; background: #1a1d27; border-bottom: 1px solid #2d3148;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #6366f1;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .hint-counter {
+      font-size: 11px; font-weight: 600; color: #f59e0b;
+      background: #f59e0b18; border: 1px solid #f59e0b33;
+      border-radius: 4px; padding: 2px 8px;
+    }
+    /* TRANSCRIPT */
+    .transcript { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+    .msg { display: flex; flex-direction: column; gap: 4px; max-width: 92%; }
+    .msg.claude { align-self: flex-start; }
+    .msg.user { align-self: flex-end; }
+    .msg-label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    .msg.claude .msg-label { color: #6366f1; }
+    .msg.user .msg-label { color: #22c55e; text-align: right; }
+    .msg-bubble { padding: 10px 13px; border-radius: 10px; font-size: 13px; line-height: 1.55; }
+    .msg.claude .msg-bubble { background: #1e2235; border: 1px solid #2d3148; border-top-left-radius: 2px; }
+    .msg.user .msg-bubble { background: #1e3a2f; border: 1px solid #22c55e33; border-top-right-radius: 2px; }
+    .hint-pill {
+      display: inline-block; font-size: 10px; background: #f59e0b22;
+      color: #f59e0b; border: 1px solid #f59e0b44;
+      border-radius: 10px; padding: 1px 8px; margin-bottom: 4px;
+    }
+    /* RIGHT PANEL */
+    .lang-select {
+      background: #0f1117; border: none; border-left: 1px solid #2d3148;
+      color: #94a3b8; font-size: 11px; padding: 2px 8px; cursor: pointer;
+    }
+    #monaco-container { flex: 1; }
+    #notes-area {
+      flex: 1; background: #0d1117; padding: 16px;
+      font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px;
+      line-height: 1.6; color: #e2e8f0; border: none; outline: none;
+      resize: none; display: none;
+    }
+    /* BOTTOM BAR */
+    .bottombar {
+      display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+      background: #1a1d27; border-top: 1px solid #2d3148; flex-shrink: 0;
+    }
+    .rec-indicator { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #4a5568; }
+    .rec-indicator.active { color: #ef4444; }
+    .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #4a5568; }
+    .rec-indicator.active .rec-dot { background: #ef4444; animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .hitl-bar {
+      flex: 1; background: #0f1117; border: 1px solid #f59e0b44;
+      border-radius: 6px; padding: 6px 12px; font-size: 12px;
+      display: none; align-items: center; gap: 8px;
+    }
+    .hitl-bar.visible { display: flex; }
+    .hitl-label { color: #f59e0b; font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+    .hitl-text { flex: 1; background: transparent; border: none; color: #e2e8f0; font-size: 12px; outline: none; }
+    .confirm-btn { padding: 4px 12px; background: #6366f1; color: #fff; border: none; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .end-btn {
+      padding: 7px 18px; background: #ef444422; color: #ef4444;
+      border: 1px solid #ef444444; border-radius: 6px; font-size: 13px;
+      font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .end-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .end-btn:not(:disabled):hover { background: #ef4444; color: #fff; }
+    /* TOAST */
+    .toast {
+      position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);
+      background: #ef4444; color: #fff; padding: 8px 18px; border-radius: 6px;
+      font-size: 13px; font-weight: 600; display: none; z-index: 100;
+    }
+    .toast.visible { display: block; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 2px; }
+  </style>
 </head>
 <body>
-  <p>Coming soon</p>
+
+<div class="topbar">
+  <div class="mode-toggle">
+    <button class="mode-btn active" data-mode="algo">Algo</button>
+    <button class="mode-btn" data-mode="system_design">System Design</button>
+  </div>
+  <input class="problem-input" id="problem-input" placeholder="Paste problem statement here before starting…" />
+  <div class="hint-config">
+    Max hints:
+    <select id="max-hints-select">
+      <option value="3">3</option>
+      <option value="2">2</option>
+      <option value="5">5</option>
+      <option value="0">0 (none)</option>
+    </select>
+  </div>
+  <span class="debug-badge" id="debug-badge">DEBUG</span>
+  <button class="start-btn" id="start-btn">▶ Start Interview</button>
+</div>
+
+<div class="panels">
+  <div class="left-panel">
+    <div class="panel-header">
+      Interviewer
+      <span class="hint-counter" id="hint-counter">0 / 3 hints used</span>
+    </div>
+    <div class="transcript" id="transcript"></div>
+  </div>
+  <div class="right-panel">
+    <div class="panel-header" id="right-panel-header">
+      Code Editor
+      <select class="lang-select" id="lang-select">
+        <option value="python">Python</option>
+        <option value="java">Java</option>
+        <option value="javascript">JavaScript</option>
+        <option value="cpp">C++</option>
+      </select>
+    </div>
+    <div id="monaco-container"></div>
+    <textarea id="notes-area" placeholder="Use this space for system design notes, diagrams (ASCII), component lists…"></textarea>
+  </div>
+</div>
+
+<div class="bottombar">
+  <div class="rec-indicator" id="rec-indicator">
+    <div class="rec-dot"></div>
+    <span id="rec-label">Idle</span>
+  </div>
+  <div class="hitl-bar" id="hitl-bar">
+    <span class="hitl-label">Transcript</span>
+    <input class="hitl-text" id="hitl-text" type="text" />
+    <button class="confirm-btn" id="confirm-btn">✓ Confirm</button>
+  </div>
+  <button class="end-btn" id="end-btn" disabled>■ End Interview</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const DEBUG_MODE = false; // overridden by server config injection in Task 7
+</script>
 </body>
 </html>
