@@ -388,6 +388,122 @@ function stopRecording() {
   analyser = null;
   stream = null;
 }
+
+// ── APPEND MESSAGE TO LEFT PANEL ──
+function appendMessage(role, content, isHint = false) {
+  const el = document.createElement('div');
+  el.className = `msg ${role === 'assistant' ? 'claude' : 'user'}`;
+
+  const label = document.createElement('span');
+  label.className = 'msg-label';
+  label.textContent = role === 'assistant' ? 'Claude' : 'You';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+
+  if (isHint) {
+    const pill = document.createElement('span');
+    pill.className = 'hint-pill';
+    pill.textContent = `Hint ${hintsUsed} / ${maxHints}`;
+    bubble.appendChild(pill);
+    bubble.appendChild(document.createElement('br'));
+  }
+
+  bubble.appendChild(document.createTextNode(content));
+  el.appendChild(label);
+  el.appendChild(bubble);
+
+  const transcript = document.getElementById('transcript');
+  transcript.appendChild(el);
+  transcript.scrollTop = transcript.scrollHeight;
+
+  const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+  transcriptLog.push({ role: role === 'assistant' ? 'assistant' : 'user', content, ts });
+}
+
+// ── SEND TO CLAUDE ──
+async function sendToClaudeWrapper(userText) {
+  if (!userText.trim()) return;
+
+  appendMessage('user', userText);
+  conversationHistory.push({ role: 'user', content: userText });
+
+  let result;
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: conversationHistory,
+        mode: currentMode,
+        problem: document.getElementById('problem-input').value,
+        max_hints: maxHints,
+        hints_remaining: maxHints - hintsUsed,
+      }),
+    });
+    result = await res.json();
+  } catch (err) {
+    showToast('Claude API error — retrying…');
+    try {
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: conversationHistory,
+          mode: currentMode,
+          problem: document.getElementById('problem-input').value,
+          max_hints: maxHints,
+          hints_remaining: maxHints - hintsUsed,
+        }),
+      });
+      result = await res.json();
+    } catch {
+      const errMsg = 'Connection issue. Please try again.';
+      appendMessage('assistant', errMsg);
+      conversationHistory.push({ role: 'assistant', content: errMsg });
+      return;
+    }
+  }
+
+  if (result.hint_used) {
+    hintsUsed++;
+    updateHintCounter();
+  }
+
+  appendMessage('assistant', result.content, result.hint_used);
+  conversationHistory.push({ role: 'assistant', content: result.content });
+}
+
+// ── DEV MODE HITL ──
+let pendingHITLResolve = null;
+
+function showHITL(transcript) {
+  const bar = document.getElementById('hitl-bar');
+  const input = document.getElementById('hitl-text');
+  bar.classList.add('visible');
+  input.value = transcript;
+  input.focus();
+
+  pendingHITLResolve = async (confirmedText) => {
+    bar.classList.remove('visible');
+    await sendToClaudeWrapper(confirmedText);
+  };
+}
+
+document.getElementById('confirm-btn').addEventListener('click', () => {
+  if (pendingHITLResolve) {
+    const text = document.getElementById('hitl-text').value;
+    pendingHITLResolve(text);
+    pendingHITLResolve = null;
+  }
+});
+
+document.getElementById('hitl-text').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && pendingHITLResolve) {
+    pendingHITLResolve(e.target.value);
+    pendingHITLResolve = null;
+  }
+});
 </script>
 </body>
 </html>
