@@ -4,11 +4,13 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from whisper_handler import load_model, transcribe as whisper_transcribe
+from claude_handler import build_system_prompt, chat as claude_chat
 
 INTERVIEWS_DIR = Path(__file__).parent / "interviews"
 
@@ -31,3 +33,20 @@ async def transcribe_audio(audio: UploadFile = File(...)):
     audio_bytes = await audio.read()
     text = whisper_transcribe(audio_bytes)
     return {"transcript": text}
+
+class ChatRequest(BaseModel):
+    messages: list[dict]
+    mode: str
+    problem: str
+    max_hints: int
+    hints_remaining: int
+
+@app.post("/chat")
+async def chat_endpoint(req: ChatRequest):
+    system_prompt = build_system_prompt(
+        mode=req.mode,
+        problem=req.problem,
+        max_hints=req.max_hints,
+        hints_remaining=req.hints_remaining,
+    )
+    return claude_chat(req.messages, system_prompt)
