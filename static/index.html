@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Interview Coach</title>
+  <meta name="debug" content="__DEBUG__" />
+  <meta name="max-hints" content="__MAX_HINTS__" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -196,8 +198,90 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Monaco Editor -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+
 <script>
-  const DEBUG_MODE = false; // overridden by server config injection in Task 7
+// ── CONFIG (meta tags injected by server — Task 7) ──
+const DEBUG_MODE = document.querySelector('meta[name="debug"]')?.content === 'true';
+const SERVER_MAX_HINTS = parseInt(document.querySelector('meta[name="max-hints"]')?.content || '3');
+if (DEBUG_MODE) document.getElementById('debug-badge').classList.add('visible');
+
+// ── STATE ──
+let currentMode = 'algo';
+let monacoEditor = null;
+let sessionActive = false;
+let hintsUsed = 0;
+let maxHints = SERVER_MAX_HINTS;
+let conversationHistory = [];
+let sessionStartTime = null;
+let transcriptLog = [];
+
+// ── MONACO INIT ──
+require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+require(['vs/editor/editor.main'], function () {
+  monacoEditor = monaco.editor.create(document.getElementById('monaco-container'), {
+    value: '# Write your solution here\n',
+    language: 'python',
+    theme: 'vs-dark',
+    fontSize: 13,
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+  });
+});
+
+// ── MODE TOGGLE ──
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (sessionActive) return;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMode = btn.dataset.mode;
+    updateRightPanel();
+  });
+});
+
+function updateRightPanel() {
+  const header = document.getElementById('right-panel-header');
+  const langSelect = document.getElementById('lang-select');
+  const monacoEl = document.getElementById('monaco-container');
+  const notesEl = document.getElementById('notes-area');
+
+  if (currentMode === 'algo') {
+    header.childNodes[0].textContent = 'Code Editor ';
+    langSelect.style.display = '';
+    monacoEl.style.display = 'block';
+    notesEl.style.display = 'none';
+  } else {
+    header.childNodes[0].textContent = 'Notes ';
+    langSelect.style.display = 'none';
+    monacoEl.style.display = 'none';
+    notesEl.style.display = 'block';
+  }
+}
+
+// ── LANGUAGE TOGGLE ──
+document.getElementById('lang-select').addEventListener('change', (e) => {
+  if (!monacoEditor) return;
+  monaco.editor.setModelLanguage(monacoEditor.getModel(), e.target.value);
+});
+
+// ── HINT COUNTER DISPLAY ──
+function updateHintCounter() {
+  maxHints = parseInt(document.getElementById('max-hints-select').value);
+  document.getElementById('hint-counter').textContent = `${hintsUsed} / ${maxHints} hints used`;
+}
+document.getElementById('max-hints-select').addEventListener('change', updateHintCounter);
+updateHintCounter();
+
+// ── TOAST ──
+function showToast(msg, duration = 3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('visible');
+  setTimeout(() => el.classList.remove('visible'), duration);
+}
 </script>
 </body>
 </html>
